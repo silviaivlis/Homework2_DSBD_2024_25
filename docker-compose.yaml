@@ -1,0 +1,84 @@
+services:
+  zookeeper:
+    image: confluentinc/cp-zookeeper:6.0.0
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+    ports:
+      - "2181:2181"
+    restart: always
+  
+  kafka:
+    image: confluentinc/cp-kafka:6.0.0
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_LISTENERS: "PLAINTEXT://0.0.0.0:9092"
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    ports:
+      - "9092:9092"
+    restart: always
+
+  server:
+    build:
+      context: .
+      dockerfile: ./server/Dockerfile
+    ports:
+      - "50051:50051"
+      - "50052:50052"
+    depends_on:
+      - database
+    environment:
+      - DATABASE_URL=postgresql://hw1:password@database:5432/mydb
+    restart: always
+
+  data_collector:
+    build:
+      context: .
+      dockerfile: ./data_collector/Dockerfile
+    depends_on:
+      - database
+      - kafka
+    environment:
+      - DATABASE_URL=postgresql://hw1:password@database:5432/mydb
+      - BOOTSTRAP_SERVERS=kafka:9092
+    restart: always 
+
+  database:
+    image: postgres:13
+    environment:
+      POSTGRES_USER: hw1
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: mydb
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    restart: always 
+
+  alert_system:
+    build:
+      context: .
+      dockerfile: ./alert_system/Dockerfile
+    depends_on:
+      - database
+      - kafka
+    environment:
+      - DATABASE_URL=postgresql://hw1:password@database:5432/mydb
+      - BOOTSTRAP_SERVERS=kafka:9092
+    restart: always
+
+  alert_notifier_system:
+    build:
+      context: .
+      dockerfile: ./alert_notifier_system/Dockerfile
+    depends_on:
+      - kafka
+    environment:
+      - BOOTSTRAP_SERVERS=kafka:9092
+    restart: always
+
+volumes:
+  db_data:
